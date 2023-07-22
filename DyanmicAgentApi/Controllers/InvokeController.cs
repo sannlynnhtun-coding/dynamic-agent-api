@@ -3,9 +3,16 @@ using Microsoft.AspNetCore.Mvc;
 namespace DyanmicAgentApi.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
-    public class InvokeController : ControllerBase
+    //[Route("[controller]")]
+    [Route("")]
+    public class InvokeController : Controller
     {
+        [HttpGet]
+        public IActionResult Index()
+        {
+            return View();
+        }
+
         [HttpPost]
         public async Task<IActionResult> Invoke(
        [FromServices] HttpClient httpClient,
