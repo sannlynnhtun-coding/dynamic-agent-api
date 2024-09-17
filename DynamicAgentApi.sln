@@ -3,11 +3,10 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.6.33829.357
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DyanmicAgentApi", "DyanmicAgentApi\DyanmicAgentApi.csproj", "{CF70BE52-7E6A-4271-9731-FE3FC0756EB2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DynamicAgentApi", "DynamicAgentApi\DynamicAgentApi.csproj", "{CF70BE52-7E6A-4271-9731-FE3FC0756EB2}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Documents", "Documents", "{6FEF0E0F-B4E3-4809-AC86-275FA3B80F96}"
 	ProjectSection(SolutionItems) = preProject
-		DyanmicAgentApi\DyanmicAgentApi.http = DyanmicAgentApi\DyanmicAgentApi.http
 		README.md = README.md
 	EndProjectSection
 EndProject
