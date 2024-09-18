@@ -8,7 +8,8 @@ public class LoggingMiddleware
     private readonly RequestDelegate _next;
     private readonly ILogger<LoggingMiddleware> _logger;
     private Guid _guid;
-    private readonly StringBuilder _sb = new StringBuilder();
+
+    StringBuilder sb = new StringBuilder();
 
     public LoggingMiddleware(RequestDelegate next, ILogger<LoggingMiddleware> logger)
     {
@@ -19,23 +20,17 @@ public class LoggingMiddleware
     public async Task InvokeAsync(HttpContext context)
     {
         _guid = Guid.NewGuid();
+
         var stopwatch = Stopwatch.StartNew();
 
         // Log request details (Method, Path, etc.)
         Log($"Handling request: {context.Request.Method} {context.Request.Path}");
 
         // Log request body
-        try
+        var requestBody = await ReadRequestBodyAsync(context.Request);
+        if (!string.IsNullOrEmpty(requestBody))
         {
-            var requestBody = await ReadRequestBody(context.Request);
-            if (!string.IsNullOrEmpty(requestBody))
-            {
-                Log($"Request Body: {requestBody}");
-            }
-        }
-        catch (NotSupportedException ex)
-        {
-            Log($"Request Body NotSupportedException: {ex.Message}");
+            Log($"Request Body: {requestBody}");
         }
 
         // Log request headers
@@ -44,112 +39,71 @@ public class LoggingMiddleware
             Log($"Request Header: {header.Key}: {header.Value}");
         }
 
-        //// Capture the original response body stream
-        //var originalBodyStream = context.Response.Body;
+        // // Capture the original response body stream
+        // var originalResponseBodyStream = context.Response.Body;
+        //
+        // // Use a memory stream to capture the response body
+        // using var responseBodyStream = new MemoryStream();
+        // context.Response.Body = responseBodyStream;
 
-        //using var memStream = new MemoryStream();
-        //context.Response.Body = memStream;
+        // Continue with the next middleware in the pipeline
+        Stream originalBody = context.Response.Body;
+        using var memStream = new MemoryStream();
+        context.Response.Body = memStream;
 
-        //try
-        //{
-        //    // Continue with the next middleware in the pipeline
-        //    await _next(context);
-
-        //    // Log response body
-        //    try
-        //    {
-        //        var responseBodyContent = await ReadResponseBody(context.Response);
-        //        Log($"Response Status Code: {context.Response.StatusCode}");
-        //        Log($"Response Body: {responseBodyContent}");
-        //    }
-        //    catch (NotSupportedException ex)
-        //    {
-        //        Log($"Response Body NotSupportedException: {ex.Message}");
-        //    }
-        //}
-        //finally
-        //{
-        //    // Restore the original response body stream
-        //    //memStream.Seek(0, SeekOrigin.Begin);
-        //    //await memStream.CopyToAsync(originalBodyStream);
-        //    //context.Response.Body = originalBodyStream;
-        //}
-        var originalResponseBodyStream = context.Response.Body;
-        using var responseBodyMemoryStream = new MemoryStream();
-        context.Response.Body = responseBodyMemoryStream;
-
-        context.Request.EnableBuffering();
-
-        // Proceed with the request
+        // call to the following middleware 
+        // response should be produced by one of the following middlewares
         await _next(context);
 
-        // After the response is generated, reset the stream and read the response body
-        context.Response.Body.Seek(0, SeekOrigin.Begin);
-        var responseBodyText = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        memStream.Position = 0;
+        string responseBody = await new StreamReader(memStream).ReadToEndAsync();
 
-        // Log or process the response body (assumed to be JSON here)
-        _logger.LogInformation("Response Body: " + responseBodyText);
+        memStream.Position = 0;
+        await memStream.CopyToAsync(originalBody);
 
+        // Log response status code
         Log($"Response Status Code: {context.Response.StatusCode}");
-        Log($"Response Body: {responseBodyText}");
 
-        // Reset the position and copy the contents to the original stream
-        context.Response.Body.Seek(0, SeekOrigin.Begin);
-        await responseBodyMemoryStream.CopyToAsync(originalResponseBodyStream);
+        // Log response body
+        Log($"Response Body: {responseBody}");
 
         stopwatch.Stop();
         Log($"Processing time: {stopwatch.ElapsedMilliseconds} ms");
 
-        // Append logs to a file
-        var logFileName = $"log-{DateTime.Now:yyyyMMddHH}.txt";
-        await File.AppendAllTextAsync(logFileName, _sb.ToString());
-        _sb.Clear();
+        await File.AppendAllTextAsync($"log-{DateTime.Now.ToString("yyyyMMddhh")}.txt", sb.ToString());
+        sb.Clear();
     }
 
-    private async Task<string> ReadRequestBody(HttpRequest request)
+    private async Task<string> ReadRequestBodyAsync(HttpRequest request)
     {
-        if (!request.Body.CanSeek)
-        {
-            // Log if the stream is non-seekable
-            Log("Request Body is not seekable.");
-            return null;
-        }
+        // Allow the request body to be read multiple times
+        request.EnableBuffering();
 
-        request.EnableBuffering(); // Ensure buffering to allow reading the body multiple times
-        request.Body.Position = 0; // Reset the stream position
+        using var reader = new StreamReader(request.Body, Encoding.UTF8, leaveOpen: true);
+        var body = await reader.ReadToEndAsync();
 
-        using (var reader = new StreamReader(request.Body, Encoding.UTF8, leaveOpen: true))
-        {
-            var body = await reader.ReadToEndAsync();
-            request.Body.Position = 0; // Reset the stream position for downstream middleware
-            return body;
-        }
+        // Reset the request body stream position so the next middleware can read it
+        request.Body.Position = 0;
+
+        return body;
     }
 
-    private async Task<string> ReadResponseBody(HttpResponse response)
+    private async Task<string> ReadResponseBodyAsync(MemoryStream responseBodyStream)
     {
-        if (!response.Body.CanSeek)
-        {
-            // Log if the stream is non-seekable
-            Log("Response Body is not seekable.");
-            return null;
-        }
+        responseBodyStream.Position = 0;
 
-        response.Body.Seek(0, SeekOrigin.Begin); // Reset the stream position
-        using (var reader = new StreamReader(response.Body, leaveOpen: true))
-        {
-            var body = await reader.ReadToEndAsync();
-            response.Body.Seek(0, SeekOrigin.Begin); // Reset the stream position for further processing
-            return body;
-        }
+        using var reader = new StreamReader(responseBodyStream);
+        var body = await reader.ReadToEndAsync();
+
+        // Reset the response body stream position for future operations
+        responseBodyStream.Position = 0;
+
+        return body;
     }
 
     private void Log(string message)
     {
-        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-        var logEntry = $"[{timestamp}] [{_guid:N}] - {message}\n";
-        _sb.Append(logEntry);
+        sb.Append($"[{DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss tt")}] [{_guid.ToString("N")}]- " + message + "\n");
         _logger.LogInformation(message);
     }
 }
-
