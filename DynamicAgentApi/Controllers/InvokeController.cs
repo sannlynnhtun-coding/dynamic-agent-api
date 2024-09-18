@@ -56,7 +56,7 @@ public class InvokeController : Controller
                 {
                     // For multipart/form-data, handle the form data
                     // NOTE: Multipart form data requires a more complex handling for files.
-                    throw new Exception("multipart/form-data is not supported in this sample implementation.");
+                    return BadRequest("multipart/form-data is not supported in this sample implementation.");
                 }
                 else
                 {
@@ -91,25 +91,19 @@ public class InvokeController : Controller
                     break;
                 case "PATCH":
                     var request = new HttpRequestMessage(new HttpMethod("PATCH"), new Uri(url))
-                        { Content = content };
+                    { Content = content };
                     responseMessage = await httpClient.SendAsync(request, cancellationToken);
                     break;
                 case "DELETE":
                     responseMessage = await httpClient.DeleteAsync(new Uri(url), cancellationToken);
                     break;
                 default:
-                    throw new Exception("Unsupported HTTP method");
+                    return BadRequest("Unsupported HTTP method");
             }
 
             if (responseMessage != null)
-                return ConvertHttpResponseMessageToIActionResult(responseMessage);
-                //return new HttpResponseMessageResult(responseMessage);
+                return new HttpResponseMessageResult(responseMessage);
             return BadRequest();
-
-            //if (responseMessage != null)
-            //    return responseMessage;
-
-            //return null;
         }
         catch (Exception ex)
         {
@@ -117,42 +111,7 @@ public class InvokeController : Controller
             {
                 Message = ex.ToString()
             });
-
-            //throw;
         }
-    }
-
-    public IActionResult ConvertHttpResponseMessageToIActionResult(HttpResponseMessage httpResponseMessage)
-    {
-        // Extract the content as a string if available
-        var contentTask = httpResponseMessage.Content?.ReadAsStringAsync();
-        contentTask?.Wait();
-        var content = contentTask?.Result ?? string.Empty;
-
-        // Create a ContentResult to represent the response
-        var result = new ContentResult
-        {
-            Content = content,
-            StatusCode = (int)httpResponseMessage.StatusCode,
-            ContentType = httpResponseMessage.Content?.Headers?.ContentType?.ToString() ?? "text/plain"
-        };
-
-        // Copy headers from HttpResponseMessage to ContentResult
-        foreach (var header in httpResponseMessage.Headers)
-        {
-            HttpContext.Response.Headers[header.Key] = string.Join(",", header.Value);
-        }
-
-        // Copy content-specific headers (if they exist)
-        if (httpResponseMessage.Content != null)
-        {
-            foreach (var contentHeader in httpResponseMessage.Content.Headers)
-            {
-                HttpContext.Response.Headers[contentHeader.Key] = string.Join(",", contentHeader.Value);
-            }
-        }
-
-        return result;
     }
 
     private class HttpResponseMessageResult : IActionResult
@@ -164,34 +123,17 @@ public class InvokeController : Controller
             _responseMessage = responseMessage;
         }
 
-        public async Task ExecuteResultAsync(ActionContext context)
+        public Task ExecuteResultAsync(ActionContext context)
         {
-            // Set status code
             context.HttpContext.Response.StatusCode = (int)_responseMessage.StatusCode;
-
-            // Clear existing headers
             context.HttpContext.Response.Headers.Clear();
 
-            // Copy headers from HttpResponseMessage, ensuring UTF-8 content-type if applicable
-            foreach (var header in _responseMessage.Headers)
+            foreach (var header in _responseMessage.Content.Headers)
             {
                 context.HttpContext.Response.Headers.TryAdd(header.Key, header.Value.ToArray());
             }
 
-            // Ensure Content-Type includes UTF-8
-            if (_responseMessage.Content.Headers.ContentType != null)
-            {
-                var charset = _responseMessage.Content.Headers.ContentType.CharSet;
-
-                // If the charset is not UTF-8, set it to UTF-8
-                if (string.IsNullOrEmpty(charset) || !charset.Equals("utf-8", StringComparison.OrdinalIgnoreCase))
-                {
-                    _responseMessage.Content.Headers.ContentType.CharSet = "utf-8";
-                }
-            }
-
-            // Copy content to the response body with UTF-8 encoding
-            await _responseMessage.Content.CopyToAsync(context.HttpContext.Response.Body);
+            return _responseMessage.Content.CopyToAsync(context.HttpContext.Response.Body);
         }
     }
 }
