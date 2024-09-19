@@ -114,6 +114,13 @@ public class InvokeController : Controller
         }
     }
 
+    [Route("test")]
+    [HttpPost]
+    public IActionResult Test()
+    {
+        return Ok(new { Message = "Testing" });
+    }
+
     private class HttpResponseMessageResult : IActionResult
     {
         private readonly HttpResponseMessage _responseMessage;
