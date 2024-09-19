@@ -23,36 +23,23 @@ public class LoggingMiddleware
 
         var stopwatch = Stopwatch.StartNew();
 
-        // Log request details (Method, Path, etc.)
         Log($"Handling request: {context.Request.Method} {context.Request.Path}");
 
-        // Log request body
         var requestBody = await ReadRequestBodyAsync(context.Request);
         if (!string.IsNullOrEmpty(requestBody))
         {
             Log($"Request Body: {requestBody}");
         }
 
-        // Log request headers
         foreach (var header in context.Request.Headers)
         {
             Log($"Request Header: {header.Key}: {header.Value}");
         }
 
-        // // Capture the original response body stream
-        // var originalResponseBodyStream = context.Response.Body;
-        //
-        // // Use a memory stream to capture the response body
-        // using var responseBodyStream = new MemoryStream();
-        // context.Response.Body = responseBodyStream;
-
-        // Continue with the next middleware in the pipeline
         Stream originalBody = context.Response.Body;
         using var memStream = new MemoryStream();
         context.Response.Body = memStream;
 
-        // call to the following middleware 
-        // response should be produced by one of the following middlewares
         await _next(context);
 
         memStream.Position = 0;
@@ -61,10 +48,7 @@ public class LoggingMiddleware
         memStream.Position = 0;
         await memStream.CopyToAsync(originalBody);
 
-        // Log response status code
         Log($"Response Status Code: {context.Response.StatusCode}");
-
-        // Log response body
         Log($"Response Body: {responseBody}");
 
         stopwatch.Stop();
@@ -76,13 +60,9 @@ public class LoggingMiddleware
 
     private async Task<string> ReadRequestBodyAsync(HttpRequest request)
     {
-        // Allow the request body to be read multiple times
         request.EnableBuffering();
-
         using var reader = new StreamReader(request.Body, Encoding.UTF8, leaveOpen: true);
         var body = await reader.ReadToEndAsync();
-
-        // Reset the request body stream position so the next middleware can read it
         request.Body.Position = 0;
 
         return body;
@@ -91,13 +71,9 @@ public class LoggingMiddleware
     private async Task<string> ReadResponseBodyAsync(MemoryStream responseBodyStream)
     {
         responseBodyStream.Position = 0;
-
         using var reader = new StreamReader(responseBodyStream);
         var body = await reader.ReadToEndAsync();
-
-        // Reset the response body stream position for future operations
         responseBodyStream.Position = 0;
-
         return body;
     }
 
